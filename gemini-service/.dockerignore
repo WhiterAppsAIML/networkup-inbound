@@ -1,0 +1,11 @@
+.env
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/
+*_body.json
+.git/
+.gitignore
+.vscode/
+*.md

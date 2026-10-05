@@ -1,0 +1,232 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum AutomationStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+}
+
+enum EngagementType {
+  LIKE
+  COMMENT
+}
+
+enum ConnectionStatus {
+  NOT_CONNECTED
+  PENDING
+  CONNECTED
+}
+
+enum LeadState {
+  PENDING
+  CONNECTION_SENT
+  CONNECTION_ACCEPTED
+  MESSAGE_SENT
+  REPLIED
+  REMOVED
+  WRONG_PERSON
+  COMPLETED
+}
+
+enum SenderStatus {
+  HEALTHY
+  WARNING
+  RESTRICTED
+}
+
+enum EventType {
+  ENGAGEMENT_DETECTED
+  CONNECTION_SENT
+  CONNECTION_ACCEPTED
+  MESSAGE_SENT
+  REPLY_DETECTED
+  REMOVED
+  MARKED_WRONG_PERSON
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum SubscriptionTier {
+  STARTER
+  PRO
+  ENTERPRISE
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum DeadLetterStatus {
+  PENDING
+  RETRYING
+  RESOLVED
+  ARCHIVED
+}
+
+model Workspace {
+  id                String   @id @default(cuid())
+  name              String
+  slug              String   @unique
+  subscriptionTier  SubscriptionTier @default(STARTER)
+  settings          Json     @default("{}")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  members           WorkspaceMember[]
+  automations       Automation[]
+  senderAccounts    SenderAccount[]
+  leads             Lead[]
+  leadEvents        LeadEvent[]
+  auditExports      AuditExport[]
+  deadLetters       DeadLetter[]
+
+  @@index([slug])
+}
+
+model WorkspaceMember {
+  id          String       @id @default(cuid())
+  workspaceId String
+  userId      String
+  email       String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime     @default(now())
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([userId])
+  @@index([workspaceId, role])
+}
+
+model Automation {
+  id                     String   @id @default(cuid())
+  workspaceId            String
+  name                   String
+  sourcePostUrl          String
+  actionWords            Json     @default("[]")
+  connectionNoteTemplate String?
+  messageTemplate        String
+  senderAccountId        String
+  status                 AutomationStatus @default(DRAFT)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  workspace              Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  senderAccount          SenderAccount    @relation(fields: [senderAccountId], references: [id], onDelete: Cascade)
+  leads                  Lead[]
+
+  @@index([workspaceId, status])
+  @@index([senderAccountId])
+  @@index([workspaceId, createdAt])
+}
+
+model Lead {
+  id                    String   @id @default(cuid())
+  workspaceId           String
+  automationId          String
+  linkedinProfileUrl    String
+  firstName             String?
+  lastName              String?
+  company               String?
+  engagementType        EngagementType
+  commentText           String?
+  connectionStatus      ConnectionStatus @default(NOT_CONNECTED)
+  state                 LeadState @default(PENDING)
+  createdAt             DateTime @default(now())
+  stateUpdatedAt        DateTime @updatedAt
+
+  workspace             Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automation            Automation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  events                LeadEvent[]
+
+  @@index([workspaceId, automationId, state])
+  @@index([workspaceId, automationId, connectionStatus])
+  @@index([workspaceId, linkedinProfileUrl])
+}
+
+model SenderAccount {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  linkedinAccountRef String  @unique
+  displayName       String
+  dailyActionCount  Int      @default(0)
+  weeklyActionCount Int      @default(0)
+  status            SenderStatus @default(HEALTHY)
+  cookies           Json?
+  lastHealthCheck   DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace         Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  automations       Automation[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, linkedinAccountRef])
+}
+
+model LeadEvent {
+  id        String   @id @default(cuid())
+  workspaceId String
+  leadId    String
+  eventType EventType
+  timestamp DateTime @default(now())
+  metadata  Json?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, leadId, timestamp])
+  @@index([workspaceId, eventType])
+}
+
+model AuditExport {
+  id          String       @id @default(cuid())
+  workspaceId String
+  requestedBy String
+  status      ExportStatus @default(PENDING)
+  format      String       @default("json")
+  filters     Json         @default("{}")
+  fileUrl     String?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+}
+
+model DeadLetter {
+  id              String            @id @default(cuid())
+  workspaceId     String
+  queueName       String
+  jobId           String
+  payload         Json
+  error           String
+  attemptCount    Int               @default(0)
+  nextRetryAt     DateTime?
+  status          DeadLetterStatus  @default(PENDING)
+  createdAt       DateTime          @default(now())
+  resolvedAt      DateTime?
+
+  workspace       Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, queueName, status])
+  @@index([workspaceId, nextRetryAt])
+}
