@@ -35,7 +35,7 @@ logger = logging.getLogger("gemini-comment-service")
 
 app = FastAPI(title="gemini-comment-service")
 
-_executor = ThreadPoolExecutor(max_workers=4)
+_executor = ThreadPoolExecutor(max_workers=8)
 
 
 @app.exception_handler(RequestValidationError)
