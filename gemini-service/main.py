@@ -1,5 +1,6 @@
 import logging
 import time
+import secrets
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -48,13 +49,12 @@ def verify_token(authorization: str = Header(default=None)):
 
     token = authorization.removeprefix("Bearer ").strip()
     expected = settings.SERVICE_TOKEN.strip()
-    if token != expected:
+
+    if not secrets.compare_digest(token.encode("utf-8"), expected.encode("utf-8")):
         logger.warning(
-            "token mismatch: received_len=%s expected_len=%s received_repr=%s expected_repr=%s",
+            "token mismatch: received_len=%s expected_len=%s",
             len(token),
             len(expected),
-            repr(token),
-            repr(expected),
         )
         raise HTTPException(status_code=401, detail="Invalid service token")
 
