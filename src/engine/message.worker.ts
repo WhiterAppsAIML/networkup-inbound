@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
-import { CommentPersonalizationClient } from '../ai/comment-personalization.client';
+import { MessagePersonalizationClient } from '../ai/message-personalization.client';
 
 interface MessageJobData {
   leadId: string;
@@ -17,7 +17,7 @@ export class MessageWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly linkedinClient: LinkedInHttpClient,
-    private readonly aiClient: CommentPersonalizationClient,
+    private readonly aiClient: MessagePersonalizationClient,
   ) {
     super(QUEUE_NAMES.MESSAGE, 'message', { prisma, queueService });
   }
@@ -45,48 +45,29 @@ export class MessageWorker extends BaseWorker {
 
     let message = this.interpolateTemplate(lead.automation.messageTemplate, lead);
 
-    if (lead.engagementType === 'COMMENT' && lead.commentText) {
-      try {
-        const improvised = await this.aiClient.improviseComment({
-          baseTemplate: message,
-          leadContext: {
-            firstName: lead.firstName || '',
-            fullName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
-            commentText: lead.commentText,
-          },
-          isConnected: lead.connectionStatus === 'CONNECTED',
-        });
-        if (improvised) message = improvised;
-      } catch (error: any) {
-        this.logger.warn(`AI personalization failed for lead ${leadId}, using base template: ${error.message}`);
-      }
-    }
-
+    // Personalize message for ALL leads, not just comments
     try {
-      await this.context.prisma.lead.update({
-        where: { id: leadId },
-        data: { state: 'MESSAGE_SENT', stateUpdatedAt: new Date() },
-      });
-
-      await this.context.prisma.leadEvent.create({
-        data: {
-          workspaceId: lead.workspaceId,
-          leadId,
-          eventType: 'MESSAGE_SENT',
-          metadata: { message, conversationUrn } as any,
+      const improvised = await this.aiClient.personalizeMessage({
+        baseTemplate: message,
+        leadContext: {
+          firstName: lead.firstName || '',
+          fullName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
+          company: lead.company || '',
+          commentText: lead.commentText || '',
+          engagementType: lead.engagementType || '',
         },
+        postContext: lead.automation.sourcePostUrl
+          ? {
+              postUrl: lead.automation.sourcePostUrl,
+              postContent: lead.automation.sourcePostUrl,
+              actionWords: this.normalizeActionWords(lead.automation.actionWords),
+            }
+          : undefined,
+        isConnected: lead.connectionStatus === 'CONNECTED',
       });
-
-      await this.linkedinClient.sendMessage(senderAccountId, conversationUrn, message);
-      await this.context.queueService.addReplyPollJob(leadId, senderAccountId);
-
-      this.logger.log(`Message sent to lead ${leadId}`);
-    } catch (error) {
-      await this.context.prisma.lead.update({
-        where: { id: leadId },
-        data: { state: 'CONNECTION_ACCEPTED', stateUpdatedAt: new Date() },
-      });
-      throw error;
+      if (improvised) message = improvised;
+    } catch (error: any) {
+      this.logger.warn(`AI message personalization failed for lead ${leadId}, using base template: ${error.message}`);
     }
   }
 
@@ -103,12 +84,6 @@ export class MessageWorker extends BaseWorker {
     return `urn:li:conversation:${profileUrn}`;
   }
 
-  private extractProfileUrn(url: string): string | null {
-    const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
-    if (!match) return null;
-    return `urn:li:fs_profile:${match[1]}`;
-  }
-
   private interpolateTemplate(template: string, lead: any): string {
     return template
       .replace(/\{\{first_name\}\}/gi, lead.firstName || '')
@@ -116,5 +91,17 @@ export class MessageWorker extends BaseWorker {
       .replace(/\{\{full_name\}\}/gi, `${lead.firstName || ''} ${lead.lastName || ''}`.trim())
       .replace(/\{\{company\}\}/gi, lead.company || '')
       .replace(/\{\{job_title\}\}/gi, '');
+  }
+
+  private normalizeActionWords(actionWords: any): string[] {
+    if (!actionWords) return [];
+    if (Array.isArray(actionWords)) return actionWords.map((aw: any) => String(aw));
+    return [String(actionWords)];
+  }
+
+  private extractProfileUrn(url: string): string | null {
+    const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
+    if (!match) return null;
+    return `urn:li:fs_profile:${match[1]}`;
   }
 }

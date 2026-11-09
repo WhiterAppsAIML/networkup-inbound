@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.module';
 import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
+import { ConnectionNoteClient } from '../ai/connection-note.client';
 
 interface ConnectJobData {
   leadId: string;
@@ -16,6 +17,7 @@ export class ConnectionWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly linkedinClient: LinkedInHttpClient,
+    private readonly noteClient: ConnectionNoteClient,
   ) {
     super(QUEUE_NAMES.CONNECT, 'connect', { prisma, queueService });
   }
@@ -45,7 +47,33 @@ export class ConnectionWorker extends BaseWorker {
       throw new Error(`Cannot extract profile URN from ${lead.linkedinProfileUrl}`);
     }
 
-    const note = this.interpolateTemplate(lead.automation.connectionNoteTemplate || '', lead);
+    // Generate connection note via AI
+    let note = this.interpolateTemplate(lead.automation.connectionNoteTemplate || '', lead);
+    try {
+      const aiNote = await this.noteClient.generateConnectionNote({
+        leadContext: {
+          firstName: lead.firstName || '',
+          fullName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
+          company: lead.company || '',
+          commentText: lead.commentText || '',
+          engagementType: lead.engagementType || '',
+        },
+        postContext: lead.automation.sourcePostUrl
+          ? { postContent: lead.automation.sourcePostUrl,
+              actionWords: this.normalizeActionWords(lead.automation.actionWords),
+            }
+          : undefined,
+        maxChars: 300,
+      });
+      if (aiNote && aiNote.length <= 300) {
+        note = aiNote;
+        this.logger.log(`AI-generated connection note used for lead ${leadId}`);
+      } else {
+        this.logger.log(`AI note exceeded char limit or failed, using template for lead ${leadId}`);
+      }
+    } catch (error: any) {
+      this.logger.warn(`AI connection note generation failed for lead ${leadId}, using base template: ${error.message}`);
+    }
 
     try {
       await this.context.prisma.lead.update({
@@ -72,6 +100,12 @@ export class ConnectionWorker extends BaseWorker {
       });
       throw error;
     }
+  }
+
+  private normalizeActionWords(actionWords: any): string[] {
+    if (!actionWords) return [];
+    if (Array.isArray(actionWords)) return actionWords.map((aw: any) => String(aw));
+    return [String(actionWords)];
   }
 
   private async transitionToMessage(leadId: string, senderAccountId: string): Promise<void> {

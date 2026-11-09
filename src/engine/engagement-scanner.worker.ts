@@ -5,6 +5,7 @@ import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { QueueName } from '../queue/queue.module';
 import { EngagementScannerService } from './engagement-scanner.service';
+import { LeadScoreClient } from '../ai/lead-score.client';
 
 interface ScanJobData {
   automationId: string;
@@ -17,6 +18,7 @@ export class EngagementScannerWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly scannerService: EngagementScannerService,
+    private readonly leadScoreClient: LeadScoreClient,
   ) {
     super(QUEUE_NAMES.ENGAGEMENT_SCAN, 'scan', { prisma, queueService });
   }
@@ -42,6 +44,13 @@ export class EngagementScannerWorker extends BaseWorker {
       automation.actionWords as string[],
     );
 
+    // Normalize actionWords to string[] for the lead score client
+    const normalizedActionWords: string[] = automation.actionWords
+      ? (Array.isArray(automation.actionWords)
+          ? automation.actionWords.map((aw: any) => String(aw))
+          : automation.actionWords ? [String(automation.actionWords)] : [])
+      : [];
+
     for (const engager of engagers) {
       const existingLead = await this.context.prisma.lead.findFirst({
         where: {
@@ -52,6 +61,27 @@ export class EngagementScannerWorker extends BaseWorker {
 
       if (existingLead) continue;
 
+      // Safely get commentText (default to empty string if undefined)
+      const commentText = engager.commentText || '';
+
+      const scoreResult = await this.leadScoreClient.scoreLead({
+        leadContext: {
+          firstName: engager.firstName,
+          company: engager.company || undefined,
+          engagementType: engager.engagementType,
+          commentText,
+        },
+        postContext: {
+          postContent: automation.sourcePostUrl || '',
+          actionWords: normalizedActionWords,
+        },
+        profileData: {
+          companySize: engager.company ? this.guessCompanySize(engager.company) : undefined,
+          industry: this.guessIndustry(engager.company),
+          seniority: this.guessSeniority(engager.jobTitle),
+        },
+      });
+
       const lead = await this.context.prisma.lead.create({
         data: {
           workspaceId: automation.workspaceId,
@@ -61,9 +91,12 @@ export class EngagementScannerWorker extends BaseWorker {
           lastName: engager.lastName,
           company: engager.company,
           engagementType: engager.engagementType,
-          commentText: engager.commentText,
+          commentText,
           connectionStatus: engager.connectionStatus,
           state: 'PENDING',
+          leadScore: scoreResult?.score ?? 50,
+          leadTier: scoreResult?.tier ?? 'MEDIUM',
+          profileData: undefined,
         },
       });
 
@@ -74,7 +107,7 @@ export class EngagementScannerWorker extends BaseWorker {
           eventType: 'ENGAGEMENT_DETECTED',
           metadata: {
             engagementType: engager.engagementType,
-            commentText: engager.commentText,
+            commentText,
             matchedActionWords: engager.matchedActionWords,
           } as any,
         },
@@ -88,5 +121,30 @@ export class EngagementScannerWorker extends BaseWorker {
     }
 
     this.logger.log(`Scan completed for automation ${automationId}: ${engagers.length} new leads`);
+  }
+
+  private guessCompanySize(company: string | undefined): string | undefined {
+    if (!company) return undefined;
+    const lower = company.toLowerCase();
+    if (/ltd|inc|corp|gmbh/.test(lower)) return '11-50';
+    if (/company|corporation/.test(lower)) return '51-200';
+    return '1-10';
+  }
+
+  private guessIndustry(company: string | undefined): string | undefined {
+    if (!company) return undefined;
+    const lower = company.toLowerCase();
+    if (/saas|tech|software/.test(lower)) return 'SaaS';
+    if (/finance|bank/.test(lower)) return 'Finance';
+    if (/health|medical/.test(lower)) return 'Healthcare';
+    return undefined;
+  }
+
+  private guessSeniority(jobTitle: string | undefined): string | undefined {
+    if (!jobTitle) return undefined;
+    const lower = jobTitle.toLowerCase();
+    if (/vp|head|chief|director/.test(lower)) return 'director_plus';
+    if (/manager/.test(lower)) return 'manager';
+    return 'entry_level';
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
 import { ScraperAdapter, ScraperAdapterFactory } from './scraper-adapter.interface';
+import { ActionWordsClient } from '../ai/action-words.client';
 
 export interface EngagerData {
   profileUrl: string;
@@ -11,15 +12,31 @@ export interface EngagerData {
   commentText?: string;
   connectionStatus: 'NOT_CONNECTED' | 'PENDING' | 'CONNECTED';
   matchedActionWords: string[];
+  jobTitle?: string;
 }
 
 @Injectable()
 export class EngagementScannerService {
   private readonly logger = new Logger(EngagementScannerService.name);
+  private readonly actionWordsConfidenceThreshold = 0.7;
 
   constructor(
     private readonly linkedinClient: LinkedInHttpClient,
+    private readonly actionWordsClient: ActionWordsClient,
   ) {}
+
+  private extractPostUrn(url: string): string | null {
+    const patterns = [
+      /activity-(\d+)/,
+      /urn:li:activity:(\d+)/,
+      /activity:(\d+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return `urn:li:activity:${match[1]}`;
+    }
+    return null;
+  }
 
   async scanPostEngagers(
     senderAccountId: string,
@@ -37,9 +54,16 @@ export class EngagementScannerService {
     const engagers: EngagerData[] = [];
 
     for (const raw of rawEngagers) {
-      const matchedWords = this.matchActionWords(raw.commentText || '', actionWords);
+      const aiResult = await this.actionWordsClient.analyzeActionWords({
+        commentText: raw.commentText || '',
+        actionWords,
+      });
 
-      if (raw.engagementType === 'COMMENT' && actionWords.length > 0 && matchedWords.length === 0) {
+      const matchedWords: string[] = aiResult?.matchedWords ?? [];
+      const confidence = aiResult?.confidence ?? 0;
+      const effectiveMatch = matchedWords.length > 0 && confidence >= this.actionWordsConfidenceThreshold;
+
+      if (raw.engagementType === 'COMMENT' && actionWords.length > 0 && !effectiveMatch) {
         continue;
       }
 
@@ -66,24 +90,5 @@ export class EngagementScannerService {
     }
 
     return engagers;
-  }
-
-  private extractPostUrn(url: string): string | null {
-    const patterns = [
-      /activity-(\d+)/,
-      /urn:li:activity:(\d+)/,
-      /activity:(\d+)/,
-    ];
-    for (const pattern of patterns) {
-      const match = url.match(pattern);
-      if (match) return `urn:li:activity:${match[1]}`;
-    }
-    return null;
-  }
-
-  private matchActionWords(commentText: string, actionWords: string[]): string[] {
-    if (actionWords.length === 0) return [];
-    const lowerComment = commentText.toLowerCase();
-    return actionWords.filter((word) => lowerComment.includes(word.toLowerCase()));
   }
 }
