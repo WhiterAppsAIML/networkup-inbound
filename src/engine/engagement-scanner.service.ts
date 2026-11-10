@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
 import { ScraperAdapter, ScraperAdapterFactory } from './scraper-adapter.interface';
+<<<<<<< HEAD
 import { ActionWordsClient } from '../ai/action-words.client';
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 
 export interface EngagerData {
   profileUrl: string;
@@ -12,12 +15,16 @@ export interface EngagerData {
   commentText?: string;
   connectionStatus: 'NOT_CONNECTED' | 'PENDING' | 'CONNECTED';
   matchedActionWords: string[];
+<<<<<<< HEAD
   jobTitle?: string;
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 }
 
 @Injectable()
 export class EngagementScannerService {
   private readonly logger = new Logger(EngagementScannerService.name);
+<<<<<<< HEAD
   private readonly actionWordsConfidenceThreshold = 0.7;
 
   constructor(
@@ -38,6 +45,13 @@ export class EngagementScannerService {
     return null;
   }
 
+=======
+
+  constructor(
+    private readonly linkedinClient: LinkedInHttpClient,
+  ) {}
+
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   async scanPostEngagers(
     senderAccountId: string,
     postUrl: string,
@@ -54,6 +68,7 @@ export class EngagementScannerService {
     const engagers: EngagerData[] = [];
 
     for (const raw of rawEngagers) {
+<<<<<<< HEAD
       const aiResult = await this.actionWordsClient.analyzeActionWords({
         commentText: raw.commentText || '',
         actionWords,
@@ -64,6 +79,11 @@ export class EngagementScannerService {
       const effectiveMatch = matchedWords.length > 0 && confidence >= this.actionWordsConfidenceThreshold;
 
       if (raw.engagementType === 'COMMENT' && actionWords.length > 0 && !effectiveMatch) {
+=======
+      const matchedWords = this.matchActionWords(raw.commentText || '', actionWords);
+
+      if (raw.engagementType === 'COMMENT' && actionWords.length > 0 && matchedWords.length === 0) {
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
         continue;
       }
 
@@ -91,4 +111,26 @@ export class EngagementScannerService {
 
     return engagers;
   }
+<<<<<<< HEAD
+=======
+
+  private extractPostUrn(url: string): string | null {
+    const patterns = [
+      /activity-(\d+)/,
+      /urn:li:activity:(\d+)/,
+      /activity:(\d+)/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return `urn:li:activity:${match[1]}`;
+    }
+    return null;
+  }
+
+  private matchActionWords(commentText: string, actionWords: string[]): string[] {
+    if (actionWords.length === 0) return [];
+    const lowerComment = commentText.toLowerCase();
+    return actionWords.filter((word) => lowerComment.includes(word.toLowerCase()));
+  }
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 }

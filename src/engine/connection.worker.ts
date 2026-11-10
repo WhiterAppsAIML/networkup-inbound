@@ -4,7 +4,10 @@ import { PrismaService } from '../prisma/prisma.module';
 import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
+<<<<<<< HEAD
 import { ConnectionNoteClient } from '../ai/connection-note.client';
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 
 interface ConnectJobData {
   leadId: string;
@@ -17,7 +20,10 @@ export class ConnectionWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly linkedinClient: LinkedInHttpClient,
+<<<<<<< HEAD
     private readonly noteClient: ConnectionNoteClient,
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   ) {
     super(QUEUE_NAMES.CONNECT, 'connect', { prisma, queueService });
   }
@@ -47,6 +53,7 @@ export class ConnectionWorker extends BaseWorker {
       throw new Error(`Cannot extract profile URN from ${lead.linkedinProfileUrl}`);
     }
 
+<<<<<<< HEAD
     // Generate connection note via AI
     let note = this.interpolateTemplate(lead.automation.connectionNoteTemplate || '', lead);
     try {
@@ -74,6 +81,9 @@ export class ConnectionWorker extends BaseWorker {
     } catch (error: any) {
       this.logger.warn(`AI connection note generation failed for lead ${leadId}, using base template: ${error.message}`);
     }
+=======
+    const note = this.interpolateTemplate(lead.automation.connectionNoteTemplate || '', lead);
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 
     try {
       await this.context.prisma.lead.update({
@@ -102,12 +112,15 @@ export class ConnectionWorker extends BaseWorker {
     }
   }
 
+<<<<<<< HEAD
   private normalizeActionWords(actionWords: any): string[] {
     if (!actionWords) return [];
     if (Array.isArray(actionWords)) return actionWords.map((aw: any) => String(aw));
     return [String(actionWords)];
   }
 
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   private async transitionToMessage(leadId: string, senderAccountId: string): Promise<void> {
     await this.context.prisma.lead.update({
       where: { id: leadId },

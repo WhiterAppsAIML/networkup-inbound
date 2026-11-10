@@ -4,7 +4,11 @@ import { PrismaService } from '../prisma/prisma.module';
 import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { LinkedInHttpClient } from '../linkedin-client/linkedin-http.client';
+<<<<<<< HEAD
 import { MessagePersonalizationClient } from '../ai/message-personalization.client';
+=======
+import { CommentPersonalizationClient } from '../ai/comment-personalization.client';
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 
 interface MessageJobData {
   leadId: string;
@@ -17,7 +21,11 @@ export class MessageWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly linkedinClient: LinkedInHttpClient,
+<<<<<<< HEAD
     private readonly aiClient: MessagePersonalizationClient,
+=======
+    private readonly aiClient: CommentPersonalizationClient,
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   ) {
     super(QUEUE_NAMES.MESSAGE, 'message', { prisma, queueService });
   }
@@ -45,6 +53,7 @@ export class MessageWorker extends BaseWorker {
 
     let message = this.interpolateTemplate(lead.automation.messageTemplate, lead);
 
+<<<<<<< HEAD
     // Personalize message for ALL leads, not just comments
     try {
       const improvised = await this.aiClient.personalizeMessage({
@@ -68,6 +77,50 @@ export class MessageWorker extends BaseWorker {
       if (improvised) message = improvised;
     } catch (error: any) {
       this.logger.warn(`AI message personalization failed for lead ${leadId}, using base template: ${error.message}`);
+=======
+    if (lead.engagementType === 'COMMENT' && lead.commentText) {
+      try {
+        const improvised = await this.aiClient.improviseComment({
+          baseTemplate: message,
+          leadContext: {
+            firstName: lead.firstName || '',
+            fullName: `${lead.firstName || ''} ${lead.lastName || ''}`.trim(),
+            commentText: lead.commentText,
+          },
+          isConnected: lead.connectionStatus === 'CONNECTED',
+        });
+        if (improvised) message = improvised;
+      } catch (error: any) {
+        this.logger.warn(`AI personalization failed for lead ${leadId}, using base template: ${error.message}`);
+      }
+    }
+
+    try {
+      await this.context.prisma.lead.update({
+        where: { id: leadId },
+        data: { state: 'MESSAGE_SENT', stateUpdatedAt: new Date() },
+      });
+
+      await this.context.prisma.leadEvent.create({
+        data: {
+          workspaceId: lead.workspaceId,
+          leadId,
+          eventType: 'MESSAGE_SENT',
+          metadata: { message, conversationUrn } as any,
+        },
+      });
+
+      await this.linkedinClient.sendMessage(senderAccountId, conversationUrn, message);
+      await this.context.queueService.addReplyPollJob(leadId, senderAccountId);
+
+      this.logger.log(`Message sent to lead ${leadId}`);
+    } catch (error) {
+      await this.context.prisma.lead.update({
+        where: { id: leadId },
+        data: { state: 'CONNECTION_ACCEPTED', stateUpdatedAt: new Date() },
+      });
+      throw error;
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
     }
   }
 
@@ -84,6 +137,15 @@ export class MessageWorker extends BaseWorker {
     return `urn:li:conversation:${profileUrn}`;
   }
 
+<<<<<<< HEAD
+=======
+  private extractProfileUrn(url: string): string | null {
+    const match = url.match(/linkedin\.com\/in\/([^/?#]+)/);
+    if (!match) return null;
+    return `urn:li:fs_profile:${match[1]}`;
+  }
+
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   private interpolateTemplate(template: string, lead: any): string {
     return template
       .replace(/\{\{first_name\}\}/gi, lead.firstName || '')
@@ -92,6 +154,7 @@ export class MessageWorker extends BaseWorker {
       .replace(/\{\{company\}\}/gi, lead.company || '')
       .replace(/\{\{job_title\}\}/gi, '');
   }
+<<<<<<< HEAD
 
   private normalizeActionWords(actionWords: any): string[] {
     if (!actionWords) return [];
@@ -104,4 +167,6 @@ export class MessageWorker extends BaseWorker {
     if (!match) return null;
     return `urn:li:fs_profile:${match[1]}`;
   }
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 }

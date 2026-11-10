@@ -77,12 +77,15 @@ enum DeadLetterStatus {
   ARCHIVED
 }
 
+<<<<<<< HEAD
 enum LeadTier {
   HIGH
   MEDIUM
   LOW
 }
 
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 model Workspace {
   id                String   @id @default(cuid())
   name              String
@@ -152,9 +155,12 @@ model Lead {
   commentText           String?
   connectionStatus      ConnectionStatus @default(NOT_CONNECTED)
   state                 LeadState @default(PENDING)
+<<<<<<< HEAD
   leadScore             Int?
   leadTier              LeadTier?
   profileData           Json?
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   createdAt             DateTime @default(now())
   stateUpdatedAt        DateTime @updatedAt
 
@@ -165,7 +171,10 @@ model Lead {
   @@index([workspaceId, automationId, state])
   @@index([workspaceId, automationId, connectionStatus])
   @@index([workspaceId, linkedinProfileUrl])
+<<<<<<< HEAD
   @@index([workspaceId, leadTier])
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 }
 
 model SenderAccount {

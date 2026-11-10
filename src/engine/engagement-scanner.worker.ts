@@ -5,7 +5,10 @@ import { QueueService, QUEUE_NAMES } from '../queue/queue.service';
 import { BaseWorker } from './base.worker';
 import { QueueName } from '../queue/queue.module';
 import { EngagementScannerService } from './engagement-scanner.service';
+<<<<<<< HEAD
 import { LeadScoreClient } from '../ai/lead-score.client';
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 
 interface ScanJobData {
   automationId: string;
@@ -18,7 +21,10 @@ export class EngagementScannerWorker extends BaseWorker {
     queueService: QueueService,
     prisma: PrismaService,
     private readonly scannerService: EngagementScannerService,
+<<<<<<< HEAD
     private readonly leadScoreClient: LeadScoreClient,
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
   ) {
     super(QUEUE_NAMES.ENGAGEMENT_SCAN, 'scan', { prisma, queueService });
   }
@@ -44,6 +50,7 @@ export class EngagementScannerWorker extends BaseWorker {
       automation.actionWords as string[],
     );
 
+<<<<<<< HEAD
     // Normalize actionWords to string[] for the lead score client
     const normalizedActionWords: string[] = automation.actionWords
       ? (Array.isArray(automation.actionWords)
@@ -51,6 +58,8 @@ export class EngagementScannerWorker extends BaseWorker {
           : automation.actionWords ? [String(automation.actionWords)] : [])
       : [];
 
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
     for (const engager of engagers) {
       const existingLead = await this.context.prisma.lead.findFirst({
         where: {
@@ -61,6 +70,7 @@ export class EngagementScannerWorker extends BaseWorker {
 
       if (existingLead) continue;
 
+<<<<<<< HEAD
       // Safely get commentText (default to empty string if undefined)
       const commentText = engager.commentText || '';
 
@@ -82,6 +92,8 @@ export class EngagementScannerWorker extends BaseWorker {
         },
       });
 
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
       const lead = await this.context.prisma.lead.create({
         data: {
           workspaceId: automation.workspaceId,
@@ -91,12 +103,18 @@ export class EngagementScannerWorker extends BaseWorker {
           lastName: engager.lastName,
           company: engager.company,
           engagementType: engager.engagementType,
+<<<<<<< HEAD
           commentText,
           connectionStatus: engager.connectionStatus,
           state: 'PENDING',
           leadScore: scoreResult?.score ?? 50,
           leadTier: scoreResult?.tier ?? 'MEDIUM',
           profileData: undefined,
+=======
+          commentText: engager.commentText,
+          connectionStatus: engager.connectionStatus,
+          state: 'PENDING',
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
         },
       });
 
@@ -107,7 +125,11 @@ export class EngagementScannerWorker extends BaseWorker {
           eventType: 'ENGAGEMENT_DETECTED',
           metadata: {
             engagementType: engager.engagementType,
+<<<<<<< HEAD
             commentText,
+=======
+            commentText: engager.commentText,
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
             matchedActionWords: engager.matchedActionWords,
           } as any,
         },
@@ -122,6 +144,7 @@ export class EngagementScannerWorker extends BaseWorker {
 
     this.logger.log(`Scan completed for automation ${automationId}: ${engagers.length} new leads`);
   }
+<<<<<<< HEAD
 
   private guessCompanySize(company: string | undefined): string | undefined {
     if (!company) return undefined;
@@ -147,4 +170,6 @@ export class EngagementScannerWorker extends BaseWorker {
     if (/manager/.test(lower)) return 'manager';
     return 'entry_level';
   }
+=======
+>>>>>>> d9fb37f3162d92582f057668f485ca3833073a3b
 }
